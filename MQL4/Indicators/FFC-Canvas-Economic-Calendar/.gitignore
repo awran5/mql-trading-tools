@@ -1,0 +1,7 @@
+# Ignore compiled binaries
+*.ex4
+
+# Ignore storage files
+/MQL4/Profiles
+/MQL4/Images
+*.log
