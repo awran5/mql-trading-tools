@@ -781,13 +781,6 @@ bool DownloadCalendarJSON(string &jsonData) {
       }
    }
    
-   Print(INDICATOR_NAME, ": Trying WebRequest method...");
-   if(DownloadViaWebRequest(jsonData)) {
-      g_retryCount = 0;
-      g_currentBackoff = INITIAL_BACKOFF_SEC;
-      return(true);
-   }
-   
    g_retryCount++;
    if(g_retryCount < MAX_RETRY_ATTEMPTS) {
       g_currentBackoff *= 2;
@@ -826,73 +819,8 @@ bool DownloadViaWinAPI(string &jsonData) {
 }
 
 //+------------------------------------------------------------------+
-//| Download using WebRequest                                         |
-//+------------------------------------------------------------------+
-bool DownloadViaWebRequest(string &jsonData) {
-   ResetLastError();
-   
-   char   postData[];
-   char   result[];
-   string headers = "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36\r\n";
-   //--- Clear Windows cache for this URL before downloading
-   DeleteUrlCacheEntryW(JSON_URL);
-   
-   string resultHeaders;
-   
-   Print(INDICATOR_NAME, ": WebRequest to ", JSON_URL);
-   
-   // NOTE: WebRequest() typically fails in Indicators (Error 4060) unless called in an EA.
-   // We attempt it here as a fallback or for users running simplified EAs.
-   int httpCode = WebRequest("GET", JSON_URL, headers, g_validTimeout, postData, result, resultHeaders);
-   
-   if(httpCode == -1) {
-      int err = GetLastError();
-      Print(INDICATOR_NAME, ": WebRequest failed. Error: ", err, " - ", GetWebRequestErrorDescription(err));
-      return(false);
-   }
-   
-   if(httpCode != 200) {
-      Print(INDICATOR_NAME, ": HTTP error ", httpCode);
-      return(false);
-   }
-   
-   int resultSize = ArraySize(result);
-   if(resultSize == 0) {
-      Print(INDICATOR_NAME, ": Empty response");
-      return(false);
-   }
-   
-   jsonData = CharArrayToString(result, 0, -1, CP_UTF8);
-   
-   if(StringLen(jsonData) < 10) {
-      Print(INDICATOR_NAME, ": Invalid response (too short)");
-      return(false);
-   }
-   
-   SaveToCache(jsonData);
-   
-   g_lastUpdate = TimeCurrent();
-   return(true);
-}
-
-//+------------------------------------------------------------------+
-//| Get WebRequest error description                                  |
-//+------------------------------------------------------------------+
-string GetWebRequestErrorDescription(const int errorCode) {
-   switch(errorCode) {
-      case 4014: return("URL not whitelisted in terminal settings");
-      case 4060: return("WebRequest function not allowed");
-      case 5200: return("URL not found");
-      case 5201: return("Cannot connect to server");
-      case 5202: return("Request timeout");
-      case 5203: return("SSL error");
-      default:   return("Unknown error");
-   }
-}
-
-//+------------------------------------------------------------------+
 //| Save JSON data to cache file                                      |
-//+------------------------------------------------------------------+
+//------------------------------------------------------------------+
 void SaveToCache(const string &jsonData) {
    int handle = FileOpen(g_jsonFileName, FILE_WRITE|FILE_BIN);
    if(handle != INVALID_HANDLE) {
@@ -2050,7 +1978,6 @@ void PrintDownloadHelp() {
    //--- Print detailed instructions to Experts tab
    Print(INDICATOR_NAME, ": ============= SETUP REQUIRED =============");
    Print(INDICATOR_NAME, ": No calendar data available.\n");
-   Print(INDICATOR_NAME, ": NOTE: Indicators cannot use WebRequest() in MT4.");
    Print(INDICATOR_NAME, ": DLL imports are required for data download.\n");
    Print(INDICATOR_NAME, ": HOW TO ENABLE:");
    Print("   1. Go to Tools -> Options -> Expert Advisors");
