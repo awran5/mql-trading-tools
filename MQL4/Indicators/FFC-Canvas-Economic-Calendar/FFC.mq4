@@ -1,7 +1,7 @@
 //+------------------------------------------------------------------+
-//|                                                          FFC.mq4 |
-//|                      Canvas Economic Calendar v2.0                 |
-//+------------------------------------------------------------------+
+//|                                                           FFC.mq4 |
+//|                                 Canvas Economic Calendar v2.0     |
+//+-------------------------------------------------------------------+
 //|                                                                   |
 //| ORIGINAL CONTRIBUTORS (v1.0):                                     |
 //|   Copyright © 2006-2016 DerkWehler, traderathome, deVries,        |
@@ -29,7 +29,7 @@ WHAT'S NEW IN v2.0:
   - Modern dark theme with gradient background
   
   [FEATURES]  
-  - Symbol Info display (Spread, RSI, Bar countdown, Daily %)
+  - Symbol Info display (Spread, Bar countdown, Today's events)
   - Historical event markers on past candles
   - Improved vertical event lines
   - Event countdown with smart formatting (days/hours/minutes)
@@ -61,16 +61,12 @@ WHAT'S NEW IN v2.0:
 //| CONSTANTS                                                         |
 //+------------------------------------------------------------------+
 #define INDICATOR_NAME        "FFC"
-#define INDICATOR_VERSION     "2.0"
+#define INDICATOR_VERSION     "2.00"
 #define INDICATOR_PREFIX      "FFC_"
-#define JSON_URL              "https://nfs.faireconomy.media/ff_calendar_thisweek.json"
 #define MAX_EVENTS            100
 #define DISPLAY_EVENTS        8
 #define CACHE_VALIDITY_SEC    14400
 #define CACHE_MAX_AGE_SEC     604800
-#define MIN_REQUEST_INTERVAL  60
-#define MAX_RETRY_ATTEMPTS    3
-#define INITIAL_BACKOFF_SEC   5
 
 // Rendering Constants
 #define ROW_HEIGHT            20
@@ -97,17 +93,9 @@ WHAT'S NEW IN v2.0:
 #define MAX_VLINE_OBJECTS     20
 #define MAX_VISIBLE_VLINES    15
 
-
 //+------------------------------------------------------------------+
-//| DLL Import                                                         |
+//| Data download is handled by the companion EA: FFC_Data_Feeder    |
 //+------------------------------------------------------------------+
-#import "urlmon.dll"
-   int URLDownloadToFileW(int pCaller, string szURL, string szFileName, int dwReserved, int lpfnCB);
-#import
-
-#import "wininet.dll"
-   int DeleteUrlCacheEntryW(string lpszUrlName);
-#import
 
 #include <Canvas\Canvas.mqh>
 
@@ -156,11 +144,6 @@ input bool     IncludeSpeaks     = true;              // - Include speeches
 input bool     IncludeHolidays   = false;             // - Include holidays
 input string   FilterKeyword     = "";                // - Show only events containing
 input string   ExcludeKeyword    = "";                // - Hide events containing
-
-input string   LBL_NETWORK       = "";                // ========== NETWORK SETTINGS ==========
-input bool     AllowAutoUpdate   = true;              // - Enable auto-update
-input int      UpdateIntervalHrs = 4;                 // - Update check interval (hours)
-input int      RequestTimeoutMs  = 10000;             // - Request timeout (milliseconds)
 
 input string   LBL_CURRENCIES    = "";                // ========== CURRENCIES ==========
 input bool     ReportUSD         = true;              // - USD
@@ -217,13 +200,8 @@ CalendarEvent g_events[];
 int           g_eventCount = 0;
 bool          g_cacheValid = false;
 datetime      g_lastUpdate = 0;
-datetime      g_lastRequestTime = 0;
-
-int           g_retryCount = 0;
-int           g_currentBackoff = INITIAL_BACKOFF_SEC;
 
 string        g_jsonFileName;
-string        g_jsonFullPath;
 
 bool          g_firstAlertFired = false;
 bool          g_secondAlertFired = false;
@@ -274,13 +252,11 @@ int           g_markerPoolUsed = 0;
 uint          g_gradientLUT[];
 bool          g_gradientCacheValid = false;
 
-int           g_validUpdateInterval = 4;
 int           g_validHideMinutes = 15;
 int           g_validTimeOffset = 0;
 int           g_validLookbackBars = 500;
 int           g_validAlert1Min = 30;
 int           g_validAlert2Min = 5;
-int           g_validTimeout = 10000;
 
 bool          g_setupAlertShown = false;
 bool          g_downloadFailed = false;
@@ -306,7 +282,6 @@ int OnInit() {
    g_pointFactor = (Digits == 3 || Digits == 5) ? 10.0 : 1.0;
    
    g_jsonFileName = INDICATOR_PREFIX + "calendar_cache.json";
-   g_jsonFullPath = TerminalInfoString(TERMINAL_DATA_PATH) + "\\MQL4\\Files\\" + g_jsonFileName;
    
    ArrayResize(g_events, MAX_EVENTS, MAX_EVENTS);
    
@@ -335,14 +310,7 @@ int OnInit() {
    string jsonData = "";
    bool cacheLoaded = LoadCachedJSON(jsonData);
    
-   if(!cacheLoaded) {
-      Print(INDICATOR_NAME, ": No valid cache. Attempting download...");
-      if(DownloadCalendarJSON(jsonData)) {
-         Print(INDICATOR_NAME, ": Download successful. Length = ", StringLen(jsonData));
-      }
-   }
-   
-   if(StringLen(jsonData) > 10) {
+   if(cacheLoaded && StringLen(jsonData) > 10) {
       if(!ParseJSONEventsWithTimeout(jsonData, JSON_PARSE_TIMEOUT)) {
          Print(INDICATOR_NAME, ": WARNING - JSON parse timeout or error");
       } else {
@@ -350,12 +318,11 @@ int OnInit() {
       }
    } else {
       g_downloadFailed = true;
-      PrintDownloadHelp();
+      PrintDataFeederHelp();
    }
    
-   if(AllowAutoUpdate && g_validUpdateInterval > 0) {
-      EventSetTimer(g_validUpdateInterval * 3600);
-   }
+   //--- Set timer to periodically check for cache updates from EA
+   EventSetTimer(4 * 3600);  // Check every 4 hours
    
    IndicatorShortName(INDICATOR_NAME + " v" + INDICATOR_VERSION);
    
@@ -386,11 +353,6 @@ bool ValidateInputs() {
    //--- Clamp inputs to safe ranges. Clamping is a recovery, not failure.
    //--- Only return false for truly unrecoverable/invalid configurations.
    
-   g_validUpdateInterval = (int)MathMax(1, MathMin(24, UpdateIntervalHrs));
-   if(g_validUpdateInterval != UpdateIntervalHrs) {
-      Print(INDICATOR_NAME, ": WARNING - UpdateIntervalHrs clamped to ", g_validUpdateInterval);
-   }
-   
    g_validHideMinutes = (int)MathMax(0, MathMin(120, HideAfterMinutes));
    if(g_validHideMinutes != HideAfterMinutes) {
       Print(INDICATOR_NAME, ": WARNING - HideAfterMinutes clamped to ", g_validHideMinutes);
@@ -408,11 +370,6 @@ bool ValidateInputs() {
    
    g_validAlert1Min = (int)MathMax(0, MathMin(1440, Alert1Minutes));
    g_validAlert2Min = (int)MathMax(0, MathMin(1440, Alert2Minutes));
-   
-   g_validTimeout = (int)MathMax(5000, MathMin(30000, RequestTimeoutMs));
-   if(g_validTimeout != RequestTimeoutMs) {
-      Print(INDICATOR_NAME, ": WARNING - RequestTimeoutMs clamped to ", g_validTimeout);
-   }
    
    //--- All values successfully clamped to valid ranges
    return(true);
@@ -634,22 +591,23 @@ void OnTimer() {
       }
    }
 
+   //--- Check if cache file has been updated by the companion EA
    datetime fileAge = GetCacheFileAge();
    
-   //--- Trigger download if: no cache exists OR cache is stale
-   bool needsUpdate = (fileAge == 0) || (TimeCurrent() - fileAge > CACHE_VALIDITY_SEC);
-   
-   if(needsUpdate) {
-      int dayOfWeek = TimeDayOfWeek(TimeCurrent());
-      if(dayOfWeek == 0 || dayOfWeek == 6) return;
-      
-      if(TimeCurrent() - g_lastRequestTime < MIN_REQUEST_INTERVAL) return;
-      
+   //--- Reload data if file exists and has been modified since last load
+   if(fileAge > 0 && fileAge > g_lastUpdate) {
       string jsonData = "";
-      if(DownloadCalendarJSON(jsonData)) {
+      if(LoadCachedJSON(jsonData) && StringLen(jsonData) > 10) {
          ParseJSONEventsWithTimeout(jsonData, JSON_PARSE_TIMEOUT);
          g_renderDirty = true;
+         g_downloadFailed = false;
+         Print(INDICATOR_NAME, ": Cache file reloaded. Events: ", g_eventCount);
       }
+   }
+   //--- If no cache exists, remind user about Data Feeder
+   else if(fileAge == 0 && !g_downloadFailed) {
+      g_downloadFailed = true;
+      PrintDataFeederHelp();
    }
 }
 
@@ -764,91 +722,28 @@ bool LoadCachedJSON(string &jsonData) {
 }
 
 //+------------------------------------------------------------------+
-//| Download calendar JSON with retry logic                           |
+//| PrintDataFeederHelp - Guide user to use the companion EA         |
 //+------------------------------------------------------------------+
-bool DownloadCalendarJSON(string &jsonData) {
-   ResetLastError();
-   g_lastRequestTime = TimeCurrent();
+void PrintDataFeederHelp() {
+   Print(INDICATOR_NAME, ": ================================================");
+   Print(INDICATOR_NAME, ": NO CALENDAR DATA FOUND!");
+   Print(INDICATOR_NAME, ": ================================================");
+   Print(INDICATOR_NAME, ": This indicator requires the companion EA to download data.");
+   Print(INDICATOR_NAME, ": ");
+   Print(INDICATOR_NAME, ": HOW TO FIX:");
+   Print(INDICATOR_NAME, ": 1. Open Navigator (Ctrl+N) -> Expert Advisors");
+   Print(INDICATOR_NAME, ": 2. Attach 'FFC_Data_Feeder' EA to any chart");
+   Print(INDICATOR_NAME, ": 3. Allow WebRequest for: https://nfs.faireconomy.media/");
+   Print(INDICATOR_NAME, ":    (Tools -> Options -> Expert Advisors -> Allow WebRequest)");
+   Print(INDICATOR_NAME, ": ");
+   Print(INDICATOR_NAME, ": The EA will automatically download and update the data.");
+   Print(INDICATOR_NAME, ": ================================================");
    
-   Print(INDICATOR_NAME, ": Attempting to download calendar data...");
-   
-   if(TerminalInfoInteger(TERMINAL_DLLS_ALLOWED)) {
-      Print(INDICATOR_NAME, ": Using Windows API download method...");
-      if(DownloadViaWinAPI(jsonData)) {
-         g_retryCount = 0;
-         g_currentBackoff = INITIAL_BACKOFF_SEC;
-         return(true);
-      }
+   //--- Show alert only once per session
+   if(!g_setupAlertShown) {
+      g_setupAlertShown = true;
+      Alert("FFC: No calendar data! Please attach FFC_Data_Feeder EA to download data.");
    }
-   
-   g_retryCount++;
-   if(g_retryCount < MAX_RETRY_ATTEMPTS) {
-      g_currentBackoff *= 2;
-      Print(INDICATOR_NAME, ": Download failed. Retry ", g_retryCount, "/", MAX_RETRY_ATTEMPTS,
-            " in ", g_currentBackoff, " seconds");
-   } else {
-      Print(INDICATOR_NAME, ": All download attempts failed. Will retry on next timer interval.");
-      g_retryCount = 0;
-      g_currentBackoff = INITIAL_BACKOFF_SEC;
-   }
-   
-   return(false);
-}
-
-//+------------------------------------------------------------------+
-//| Download using Windows API                                        |
-//+------------------------------------------------------------------+
-bool DownloadViaWinAPI(string &jsonData) {
-   ResetLastError();
-   
-   Print(INDICATOR_NAME, ": Downloading to: ", g_jsonFullPath);
-   
-   //--- Clear Windows cache for this URL before downloading
-   DeleteUrlCacheEntryW(JSON_URL);
-   
-   int downloadResult = URLDownloadToFileW(0, JSON_URL, g_jsonFullPath, 0, 0);
-   
-   if(downloadResult != 0) {
-      Print(INDICATOR_NAME, ": URLDownloadToFileW failed. Result: ", downloadResult);
-      return(false);
-   }
-   
-   Print(INDICATOR_NAME, ": File downloaded successfully!");
-   
-   return(ReadDownloadedFile(jsonData));
-}
-
-//+------------------------------------------------------------------+
-//| Save JSON data to cache file                                      |
-//------------------------------------------------------------------+
-void SaveToCache(const string &jsonData) {
-   int handle = FileOpen(g_jsonFileName, FILE_WRITE|FILE_BIN);
-   if(handle != INVALID_HANDLE) {
-      uchar buffer[];
-      StringToCharArray(jsonData, buffer, 0, -1, CP_UTF8);
-      FileWriteArray(handle, buffer, 0, ArraySize(buffer) - 1);
-      FileClose(handle);
-   }
-}
-
-//+------------------------------------------------------------------+
-//| Read downloaded file                                              |
-//+------------------------------------------------------------------+
-bool ReadDownloadedFile(string &jsonData) {
-   ResetLastError();
-   
-   if(!FileIsExist(g_jsonFileName)) {
-      Print(INDICATOR_NAME, ": Downloaded file not found!");
-      return(false);
-   }
-   
-   bool success = LoadCachedJSON(jsonData);
-   
-   if(success) {
-      Print(INDICATOR_NAME, ": JSON preview: ", StringSubstr(jsonData, 0, 100), "...");
-   }
-   
-   return(success);
 }
 
 //+------------------------------------------------------------------+
@@ -1360,7 +1255,7 @@ void RenderPanelCanvasSafe() {
    string tzStr = (gmtOffsetHours >= 0) ? "GMT+" + IntegerToString(gmtOffsetHours) 
                                         : "GMT" + IntegerToString(gmtOffsetHours);
    
-   string fullTitle = "CANVAS ECONOMIC CALENDAR (" + weekDate + ") " + tzStr;
+   string fullTitle = "FFC ECONOMIC CALENDAR (" + weekDate + ") " + tzStr;
    
    g_canvas.FontSet("Arial Bold", -90);
    g_canvas.TextOut(10, 11, fullTitle, ToARGB(TextColor, 255));
@@ -1501,7 +1396,7 @@ void DrawEventRowsOptimized() {
       if(g_downloadFailed || g_eventCount == 0) {
          // Show setup instructions on canvas
          g_canvas.TextOut(20, HEADER_HEIGHT + 5, "SETUP REQUIRED", ToARGB(HighImpactColor, 255));
-         g_canvas.TextOut(20, HEADER_HEIGHT + 22, "Please enable DLL imports in MT4 Options.", ToARGB(TextColor, 200));
+         g_canvas.TextOut(20, HEADER_HEIGHT + 22, "Please attach FFC_Data_Feeder EA to any chart.", ToARGB(TextColor, 200));
          g_canvas.TextOut(20, HEADER_HEIGHT + 39, "Check Experts tab for instructions.", ToARGB(DimTextColor, 180));
       } else {
          g_canvas.TextOut(20, HEADER_HEIGHT + 10, "No upcoming events", ToARGB(DimTextColor, 200));
@@ -1689,25 +1584,6 @@ void DrawLabelSI(string subName, string text, int x, int y, color clr) {
    ObjectSetInteger(0, name, OBJPROP_HIDDEN, true);
 }
 
-//+------------------------------------------------------------------+
-//| Extended helper for Symbol Info Labels with anchor                |
-//+------------------------------------------------------------------+
-void DrawLabelSIEx(string subName, string text, int x, int y, color clr, ENUM_ANCHOR_POINT anchor) {
-   string name = INDICATOR_PREFIX + subName;
-   if(ObjectFind(0, name) < 0) {
-      if(!ObjectCreate(0, name, OBJ_LABEL, 0, 0, 0)) return;
-   }
-   ObjectSetInteger(0, name, OBJPROP_CORNER, CORNER_RIGHT_LOWER);
-   ObjectSetInteger(0, name, OBJPROP_ANCHOR, anchor);
-   ObjectSetInteger(0, name, OBJPROP_XDISTANCE, x);
-   ObjectSetInteger(0, name, OBJPROP_YDISTANCE, y);
-   ObjectSetInteger(0, name, OBJPROP_COLOR, clr);
-   ObjectSetInteger(0, name, OBJPROP_FONTSIZE, 9);
-   ObjectSetString(0, name, OBJPROP_FONT, "Arial");
-   ObjectSetString(0, name, OBJPROP_TEXT, text);
-   ObjectSetInteger(0, name, OBJPROP_SELECTABLE, false);
-   ObjectSetInteger(0, name, OBJPROP_HIDDEN, true);
-}
 
 //+------------------------------------------------------------------+
 //| Draw "No Events" message                                          |
@@ -1948,45 +1824,6 @@ void SaveSettings() {
    GlobalVariableSet(INDICATOR_PREFIX + "FILTER_H_" + id, g_filterShowHigh ? 1.0 : 0.0);
    GlobalVariableSet(INDICATOR_PREFIX + "FILTER_M_" + id, g_filterShowMed ? 1.0 : 0.0);
    GlobalVariableSet(INDICATOR_PREFIX + "FILTER_L_" + id, g_filterShowLow ? 1.0 : 0.0);
-}
-
-//+------------------------------------------------------------------+
-//| Print download troubleshooting help                               |
-//+------------------------------------------------------------------+
-void PrintDownloadHelp() {
-   //--- Show Alert popup once to get user's attention
-   if(!g_setupAlertShown) {
-      string msg = "";
-      
-      //--- Check if DLLs are actually disabled
-      if(!TerminalInfoInteger(TERMINAL_DLLS_ALLOWED)) {
-         msg = INDICATOR_NAME + " v" + INDICATOR_VERSION + ": Setup Required!\n\n" +
-               "Please enable DLL imports to allow calendar data download.\n\n" +
-               "Go to: Tools -> Options -> Expert Advisors\n" +
-               "Check: 'Allow DLL imports'\n" +
-               "Then restart MetaTrader.";
-      } else {
-         msg = INDICATOR_NAME + " v" + INDICATOR_VERSION + ": Download Failed!\n\n" +
-               "Could not download calendar data.\n" +
-               "Check your internet connection and try again.";
-      }
-      
-      Alert(msg);
-      g_setupAlertShown = true;
-   }
-   
-   //--- Print detailed instructions to Experts tab
-   Print(INDICATOR_NAME, ": ============= SETUP REQUIRED =============");
-   Print(INDICATOR_NAME, ": No calendar data available.\n");
-   Print(INDICATOR_NAME, ": DLL imports are required for data download.\n");
-   Print(INDICATOR_NAME, ": HOW TO ENABLE:");
-   Print("   1. Go to Tools -> Options -> Expert Advisors");
-   Print("   2. Check 'Allow DLL imports'");
-   Print("   3. Click OK");
-   Print("   4. Restart MetaTrader\n");
-   Print(INDICATOR_NAME, ": The indicator uses urlmon.dll (Windows built-in)");
-   Print(INDICATOR_NAME, ": to download economic calendar data.\n");
-   Print(INDICATOR_NAME, ": ===========================================");
 }
 
 //+------------------------------------------------------------------+

@@ -44,22 +44,26 @@ This version is a **complete rewrite** from the ground up, replacing the legacy 
 
 ### Requirements
 - MetaTrader 4 (Build 600+)
-- Windows OS (uses `urlmon.dll` for downloads)
+- **FFC_Data_Feeder EA** (companion Expert Advisor for data download)
 - Internet connection
+
+> ⚠️ **Important**: This indicator requires a companion EA to download data. This design ensures MQL5 Market compliance (no DLL imports).
 
 ### Steps
 
-1. **Download** the indicator files
-2. **Copy** `FFC.mq4` to:
+1. **Download** the indicator and EA files
+2. **Copy files** to your MT4 Data Folder:
    ```
-   [MT4 Data Folder]\MQL4\Indicators\
+   FFC.mq4                → MQL4\Indicators\
+   FFC_Data_Feeder.mq4    → MQL4\Experts\
    ```
-3. **Enable DLL imports**:
+3. **Enable WebRequest**:
    - Go to `Tools` → `Options` → `Expert Advisors`
-   - Check ✅ `Allow DLL imports`
+   - Check ✅ `Allow WebRequest for listed URL`
+   - Add: `https://nfs.faireconomy.media/`
    - Click OK
-4. **Restart MetaTrader 4**
-5. **Attach** the indicator to any chart
+4. **Attach the EA** to any chart (downloads data automatically)
+5. **Attach the Indicator** to your trading charts
 
 > 💡 **Tip**: To find your MT4 Data Folder, go to `File` → `Open Data Folder` in MetaTrader.
 
@@ -79,6 +83,19 @@ This version is a **complete rewrite** from the ground up, replacing the legacy 
 | `FilterKeyword` | `""` | Show only events containing this word |
 | `ExcludeKeyword` | `""` | Hide events containing this word |
 
+### Currency Selection
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `ReportUSD` | `true` | Include USD events |
+| `ReportEUR` | `true` | Include EUR events |
+| `ReportGBP` | `true` | Include GBP events |
+| `ReportJPY` | `true` | Include JPY events |
+| `ReportAUD` | `true` | Include AUD events |
+| `ReportNZD` | `true` | Include NZD events |
+| `ReportCAD` | `true` | Include CAD events |
+| `ReportCHF` | `true` | Include CHF events |
+| `ReportCNY` | `false` | Include CNY events |
+
 ### Display Settings
 | Parameter | Default | Description |
 |-----------|---------|-------------|
@@ -86,6 +103,7 @@ This version is a **complete rewrite** from the ground up, replacing the legacy 
 | `ShowVerticalLines` | `true` | Draw vertical lines at event times |
 | `ShowSymbolInfo` | `true` | Show the bottom info bar |
 | `ShowHistoricalMarkers` | `true` | Mark past events on candles |
+| `HistoricalLookbackBars` | `500` | Max bars to search for historical events |
 | `HideAfterMinutes` | `15` | Hide events after X minutes past |
 | `ChartTimeOffset` | `0` | Manual timezone adjustment (hours) |
 
@@ -106,6 +124,11 @@ All colors are fully customizable:
 | `EnableSoundAlert` | `true` | Play sound alerts |
 | `EnablePushNotify` | `false` | Send push notifications |
 | `EnableEmailAlert` | `false` | Send email alerts |
+
+### Advanced
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `DeleteCacheOnRemove` | `false` | Delete cache file when indicator is removed |
 
 ---
 
@@ -145,12 +168,18 @@ Click **H**, **M**, or **L** in the panel header to toggle impact filters in rea
 ## 📁 File Structure
 
 ```
-Canvas-Economic-Calendar/
-├── FFC.mq4              # Main indicator source code
-├── FFC.old.mq4          # Legacy v1.0 (2016) for reference
+FFC-Canvas-Economic-Calendar/
+├── FFC.mq4              # Main indicator (DLL-free)
 ├── README.md            # This file
+├── CHANGELOG.md         # Version history
 ├── LICENSE              # MIT License
-└── .gitignore           # Git ignore rules
+├── FFC-screenshot.png   # Preview image
+└── Legacy/              # Old versions for reference
+    ├── FFC.old.mq4      # v1.0 (2016)
+    └── FFC-standalone.mq4  # v2.0 DLL version
+
+MQL4/Experts/
+└── FFC_Data_Feeder.mq4  # Companion EA for data download
 ```
 
 ---
@@ -159,17 +188,23 @@ Canvas-Economic-Calendar/
 
 ### Data Flow
 ```
-┌─────────────────┐     ┌──────────────┐     ┌─────────────┐
-│  Fair Economy   │────▶│  JSON Cache  │────▶│  FFC Panel  │
-│   JSON API      │     │  (4h valid)  │     │  (Canvas)   │
-└─────────────────┘     └──────────────┘     └─────────────┘
-                               │
-                               ▼
-                        ┌─────────────┐
-                        │   Buffers   │
-                        │  (for EAs)  │
-                        └─────────────┘
+┌─────────────────┐     ┌──────────────────┐     ┌──────────────┐
+│  Fair Economy   │────▶│  FFC_Data_Feeder │────▶│  JSON Cache  │
+│   JSON API      │     │  (WebRequest)    │     │  (MQL4/Files)│
+└─────────────────┘     └──────────────────┘     └──────────────┘
+                                                        │
+                              ┌──────────────────────────┘
+                              ▼
+                        ┌─────────────┐     ┌─────────────┐
+                        │ FFC Panel   │────▶│   Buffers   │
+                        │  (Canvas)   │     │  (for EAs)  │
+                        └─────────────┘     └─────────────┘
 ```
+
+### Why Two Components?
+- **MT4 Indicators** cannot use `WebRequest()` (platform limitation)
+- **MQL5 Market** prohibits DLL imports for security reasons
+- **Solution**: EA handles downloads, Indicator handles display
 
 ### Key Components
 - `CCanvas g_canvas` - Main rendering surface

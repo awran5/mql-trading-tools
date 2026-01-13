@@ -9,8 +9,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [2.0.0] - 2025-01-13
 
-### 🎉 Complete Rewrite
+### 🎉 Complete Rewrite - DLL-Free Architecture
 This version is a **complete architectural rewrite** of the indicator, replacing the legacy 2016 codebase with modern, production-grade implementation.
+
+> ⚠️ **Important**: This version requires the **FFC_Data_Feeder** companion EA to download data. This design ensures MQL5 Market compliance (no DLL imports).
+
+### Architecture
+
+| Component | Responsibility |
+|-----------|----------------|
+| `FFC_Data_Feeder.mq4` | Downloads JSON data via `WebRequest()` |
+| `FFC.mq4` | Reads local cache, displays data, manages alerts |
+
+**Why Two Components?**
+- MT4 Indicators cannot use `WebRequest()` (platform limitation)
+- MQL5 Market prohibits DLL imports for security
+- Solution: EA handles network, Indicator handles display
 
 ### Added
 
