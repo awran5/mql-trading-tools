@@ -61,6 +61,23 @@ void OnTimer() {
 }
 
 //+------------------------------------------------------------------+
+//| Expert tick function (required for tester)                       |
+//+------------------------------------------------------------------+
+void OnTick() {
+   // This EA is a utility - it does not trade
+   // OnTick is here only to satisfy the Strategy Tester requirement
+}
+
+//+------------------------------------------------------------------+
+//| Tester function - returns success for MQL5 Market validation     |
+//+------------------------------------------------------------------+
+double OnTester() {
+   // Return a positive value to indicate successful test
+   // This is a utility EA, not a trading EA
+   return(1.0);
+}
+
+//+------------------------------------------------------------------+
 //| Downloads JSON using WebRequest and saves to file                |
 //| NOTE: Simple implementation - no retry logic needed.             |
 //| On failure, it will retry on the next timer interval.            |
