@@ -39,6 +39,10 @@ Automatically draws Fibonacci Retracement, Arc, Fan, Time Zones, and Expansion b
 
 ![iFibonacci Screenshot](preview.png)
 
+![iFibonacci Screenshot](preview2.png)
+
+![iFibonacci Screenshot](preview3.png)
+
 ---
 
 ## 📥 Installation
