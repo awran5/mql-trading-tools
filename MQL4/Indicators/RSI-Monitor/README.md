@@ -39,14 +39,14 @@ Engineered for the modern trader where every millisecond counts:
 4. Copy `RSI_Monitor.mq4` into the folder.
 5. Restart MT4 or refresh the Indicators list in the Navigator.
 
-## � Legacy Version
+##  Legacy Version
 
 The original v1.0.0 release (2015) is still available on the MQL5 CodeBase:
 - [RSI Monitor v1.0.0 (Legacy)](https://www.mql5.com/en/code/15182)
 
-## �📄 License
+## 📄 License
 
-This project is licensed under the MIT License - see the LICENSE file for details.
+This indicator is part of the [mql-trading-tools](https://github.com/awran5/mql-trading-tools) repository and is licensed under the **MIT License**. See the root [LICENSE](../../../LICENSE) file for the full text.
 
 ---
 **Developed by Awran5**
