@@ -1097,9 +1097,6 @@ int OnInit()
    SetIndexBuffer(7, g_cumPV2, INDICATOR_CALCULATIONS);
    
    //--- Configure Buffers
-   for(int i=0; i<8; i++) 
-      ArraySetAsSeries((double*)SetIndexBuffer(i, NULL, INDICATOR_CALCULATIONS), true); // Trick to set all to series if we had them in a loop, but we'll do it explicitly for clarity:
-   
    ArraySetAsSeries(g_vwapBuffer, true);
    ArraySetAsSeries(g_upperBand1, true);
    ArraySetAsSeries(g_upperBand2, true);

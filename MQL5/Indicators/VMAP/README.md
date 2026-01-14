@@ -2,6 +2,8 @@
 
 Institutional-grade Volume Weighted Average Price (VWAP) indicator for MetaTrader 5, engineered for high-frequency trading (HFT) environments and professional asset management.
 
+[Official MQL5 Release](https://www.mql5.com/en/code/68227)
+
 ![Indicator Preview](preview.png)
 
 ![Indicator Preview](preview2.png)
@@ -15,6 +17,12 @@ Institutional-grade Volume Weighted Average Price (VWAP) indicator for MetaTrade
 *   **Zero-Latency Persistence**: High-speed Disk Caching to preserve session state (PV/Vol/Stats) across terminal restarts, ensuring instant data availability and accurate historical rendering.
 *   **Optimized Execution Loop**: Efficient $O(n)$ calculation with modularized helper functions and incremental per-tick updates, optimized for low-latency and VPS environments.
 *   **Professional Analytics UI**: Real-time diagnostic panel displaying price distance, session volume, bar counts, and active server/target offsets.
+
+## 🛡️ Institutional Development & QA
+
+This indicator has undergone a rigorous development cycle and high-level technical audits to ensure reliability:
+
+*   **AI Technical Audit**: The codebase has been thoroughly reviewed and stress-tested by **Opus 4.5** and **Gemini 3 Pro** to identify and eliminate edge-case bugs and ensure mathematical precision in all calculation modes.
 
 ## 🛠 Installation
 
