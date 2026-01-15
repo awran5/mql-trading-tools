@@ -967,13 +967,27 @@ void CalculateBandsValues(const int i, const double vwap, const double stdDev)
 //+------------------------------------------------------------------+
 //| Get adjusted volume with spike filtering                          |
 //+------------------------------------------------------------------+
+//| IMPORTANT NOTE ON VOLUME ARRAYS:                                   |
+//| In OnCalculate(), the volume[] and tick_volume[] arrays are NOT    |
+//| the same as iVolume()/iRealVolume() functions:                     |
+//|                                                                    |
+//|   volume[]      = Real Volume (from exchange, when available)      |
+//|   tick_volume[] = Tick Volume (count of price changes)             |
+//|   iVolume()     = Tick Volume (MQL4 compatibility, confusing name) |
+//|   iRealVolume() = Real Volume (same as volume[] array)             |
+//|                                                                    |
+//| For Forex/CFDs: volume[] is empty, use tick_volume[]               |
+//| For Stocks/Futures: volume[] contains real exchange volume         |
+//+------------------------------------------------------------------+
 double GetAdjustedVolume(const int i, const long &tick_volume[], const long &volume[])
 {
+   //--- Prioritize real volume (Stocks/Futures), fallback to tick volume (Forex/CFDs)
    double vol = (double)((volume[i] > 0) ? volume[i] : tick_volume[i]);
    if(vol <= 0.0) vol = 1.0;
    
    return IsVolumeSpike(vol, g_medianVolume) ? g_medianVolume : vol;
 }
+
 
 //+------------------------------------------------------------------+
 //| Update cumulative pricing and volume statistics                   |
