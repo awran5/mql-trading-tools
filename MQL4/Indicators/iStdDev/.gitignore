@@ -1,0 +1,9 @@
+# Ignore compiled binaries
+*.ex4
+*.old.mq4
+
+# Ignore storage files
+/MQL5/Profiles
+/MQL5/Images
+*/.claude
+*.log
